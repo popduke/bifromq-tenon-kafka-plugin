@@ -27,16 +27,6 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
-      - name: Read fixed Java version
-        id: java-toolchain
-        run: echo "version=$(sed -n 's/^version=//p' .mvn/tenon-toolchain.properties | cut -d. -f1)" >> "$GITHUB_OUTPUT"
-      - name: Set up fixed Java toolchain
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: ${{ steps.java-toolchain.outputs.version }}
-          java-package: jdk+jmods
-          cache: maven
       - name: Verify and build bundle
         run: ./mvnw --batch-mode --no-transfer-progress verify
       - name: Upload bundle
