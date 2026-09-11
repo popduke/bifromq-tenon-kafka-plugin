@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: Bundle (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+          - platform: macos-amd64
+            runner: macos-15-intel
+          - platform: macos-arm64
+            runner: macos-15
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Read fixed Java version
+        id: java-toolchain
+        run: echo "version=$(sed -n 's/^version=//p' .mvn/tenon-toolchain.properties)" >> "$GITHUB_OUTPUT"
+      - name: Set up fixed Java toolchain
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ steps.java-toolchain.outputs.version }}
+          java-package: jdk+jmods
+          cache: maven
+      - name: Verify and build bundle
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+      - name: Upload bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: tenon-plugin-${{ matrix.platform }}
+          path: target/*-tenon-plugin-${{ matrix.platform }}.tar.gz
+          if-no-files-found: error

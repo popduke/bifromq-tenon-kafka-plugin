@@ -1,0 +1,20 @@
+syntax = "proto3";
+package org.apache.bifromq.tenon.kafka.payload;
+option java_multiple_files = true;
+option java_package = "org.apache.bifromq.tenon.kafka.payload";
+
+message SourceRecordPayload {
+  message KafkaHeader {
+    string name = 1;
+    optional bytes value = 2;
+  }
+
+  string topic = 1;
+  int32 partition = 2;
+  int64 offset = 3;
+  int64 timestamp = 4;
+  optional bytes key = 5;
+  optional bytes value = 6;
+  repeated KafkaHeader headers = 7;
+  int32 timestamp_type = 8;
+}

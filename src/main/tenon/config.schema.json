@@ -1,0 +1,188 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Kafka source and sink configuration",
+  "description": "Kafka connection, consumer, and producer settings for one shared Tenon Plugin owner.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "bootstrapServers",
+    "groupId",
+    "sourceTopics"
+  ],
+  "properties": {
+    "bootstrapServers": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Comma-separated Kafka bootstrap server addresses."
+    },
+    "clientId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional Kafka client identifier shared by this Plugin instance."
+    },
+    "securityProtocol": {
+      "enum": [
+        "PLAINTEXT",
+        "SSL",
+        "SASL_PLAINTEXT",
+        "SASL_SSL"
+      ],
+      "description": "Kafka transport and authentication protocol."
+    },
+    "saslMechanism": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka SASL mechanism, such as PLAIN or SCRAM-SHA-512."
+    },
+    "saslJaasConfig": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka JAAS client configuration. Tenon currently passes this value as plain Plugin configuration."
+    },
+    "sslTruststoreLocation": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/",
+      "description": "Absolute path to the Kafka client truststore."
+    },
+    "sslTruststorePassword": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka truststore password passed as plain Plugin configuration."
+    },
+    "sslKeystoreLocation": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^/",
+      "description": "Absolute path to the Kafka client keystore."
+    },
+    "sslKeystorePassword": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka keystore password passed as plain Plugin configuration."
+    },
+    "sslKeyPassword": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka private key password passed as plain Plugin configuration."
+    },
+    "groupId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka consumer group identifier."
+    },
+    "sourceTopics": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "Kafka topics consumed by the Source interface."
+    },
+    "autoOffsetReset": {
+      "enum": [
+        "earliest",
+        "latest"
+      ],
+      "description": "Initial position when the consumer group has no committed offset."
+    },
+    "pollTimeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum duration of one Kafka consumer poll in milliseconds.",
+      "maximum": 2147483647
+    },
+    "maxPollRecords": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum Kafka records returned by one poll.",
+      "maximum": 2147483647
+    },
+    "defaultTopic": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Kafka topic used by the Sink when a payload omits its topic."
+    },
+    "acks": {
+      "const": "all",
+      "description": "Kafka producer acknowledgement policy required by idempotence."
+    },
+    "enableIdempotence": {
+      "const": true,
+      "description": "Kafka producer idempotence remains enabled for this delivery profile."
+    },
+    "compressionType": {
+      "enum": [
+        "none",
+        "gzip",
+        "snappy",
+        "lz4",
+        "zstd"
+      ],
+      "description": "Kafka producer compression codec."
+    },
+    "lingerMs": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Maximum batching delay in milliseconds.",
+      "maximum": 2147483647
+    },
+    "batchSize": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Target producer batch size in bytes.",
+      "maximum": 2147483647
+    },
+    "deliveryTimeoutMs": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Upper bound for Kafka producer delivery in milliseconds.",
+      "maximum": 2147483647
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "securityProtocol": {
+            "enum": [
+              "SASL_PLAINTEXT",
+              "SASL_SSL"
+            ]
+          }
+        },
+        "required": [
+          "securityProtocol"
+        ]
+      },
+      "then": {
+        "required": [
+          "saslMechanism",
+          "saslJaasConfig"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "securityProtocol": {
+            "enum": [
+              "SSL",
+              "SASL_SSL"
+            ]
+          }
+        },
+        "required": [
+          "securityProtocol"
+        ]
+      },
+      "then": {
+        "required": [
+          "sslTruststoreLocation"
+        ]
+      }
+    }
+  ]
+}
