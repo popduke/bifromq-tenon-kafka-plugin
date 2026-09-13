@@ -12,7 +12,10 @@ public final class Main {
     var program =
         SourceAndSinkProgram.<SourceRecordPayload, SinkRecordPayload>run(
             arguments, SinkRecordPayload.parser());
-    program.createSource().start();
+    var consumerCount = KafkaConfig.parse(program.config()).sourceConsumerCount();
+    for (var index = 0; index < consumerCount; index++) {
+      program.createSource().start();
+    }
     program.awaitShutdown();
   }
 }

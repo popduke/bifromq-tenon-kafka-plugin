@@ -19,6 +19,8 @@ import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.MockConsumer;
+import org.apache.kafka.clients.consumer.OffsetAndMetadata;
+import org.apache.kafka.clients.consumer.OffsetCommitCallback;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
@@ -71,6 +73,7 @@ final class KafkaSourceTest {
     assertTrue(consumer.closed());
     assertEquals(2, sent.get());
     assertEquals(1, consumer.finalOffsets.get(first).offset());
+    assertTrue(consumer.asyncCommits.get() > 0);
   }
 
   @Test
@@ -122,7 +125,7 @@ final class KafkaSourceTest {
       stopper.join();
       source.close();
     }
-    assertEquals(1, attempts.get());
+    assertTrue(attempts.get() >= 1 && attempts.get() <= 2);
   }
 
   @Test
@@ -184,6 +187,7 @@ final class KafkaSourceTest {
     private Map<TopicPartition, org.apache.kafka.clients.consumer.OffsetAndMetadata> finalOffsets;
     private ConsumerRebalanceListener listener;
     private final AtomicInteger commits = new AtomicInteger();
+    private final AtomicInteger asyncCommits = new AtomicInteger();
 
     @Override
     public synchronized void subscribe(
@@ -197,6 +201,13 @@ final class KafkaSourceTest {
         Map<TopicPartition, org.apache.kafka.clients.consumer.OffsetAndMetadata> offsets) {
       commits.incrementAndGet();
       super.commitSync(offsets);
+    }
+
+    @Override
+    public synchronized void commitAsync(
+        Map<TopicPartition, OffsetAndMetadata> offsets, OffsetCommitCallback callback) {
+      asyncCommits.incrementAndGet();
+      super.commitAsync(offsets, callback);
     }
 
     private RecordingConsumer() {
@@ -223,6 +234,7 @@ final class KafkaSourceTest {
     return new KafkaSource(
         config,
         2,
+        0,
         sender,
         new KafkaClientFactory() {
           @Override

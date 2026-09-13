@@ -81,6 +81,12 @@
       },
       "description": "Kafka topics consumed by the Source interface."
     },
+    "sourceConsumerCount": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647,
+      "description": "Number of Kafka consumers in this Source consumer group. Defaults to 1."
+    },
     "autoOffsetReset": {
       "enum": [
         "earliest",

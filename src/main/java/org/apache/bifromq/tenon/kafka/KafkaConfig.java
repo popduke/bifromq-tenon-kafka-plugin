@@ -13,6 +13,7 @@ record KafkaConfig(
     String bootstrapServers,
     String groupId,
     List<String> sourceTopics,
+    int sourceConsumerCount,
     String defaultTopic,
     int pollTimeoutMs,
     int maxPollRecords,
@@ -39,6 +40,7 @@ record KafkaConfig(
         config.required("bootstrapServers").stringValue(),
         config.required("groupId").stringValue(),
         List.copyOf(topics),
+        integer(config, "sourceConsumerCount", 1),
         text(config, "defaultTopic", ""),
         integer(config, "pollTimeoutMs", 1000),
         integer(config, "maxPollRecords", 500),
@@ -58,7 +60,7 @@ record KafkaConfig(
         integer(config, "deliveryTimeoutMs", 120000));
   }
 
-  Properties consumerProperties() {
+  Properties consumerProperties(int sourceIndex) {
     var properties = baseProperties();
     properties.put(ConsumerConfig.GROUP_ID_CONFIG, groupId);
     properties.put(
@@ -68,6 +70,9 @@ record KafkaConfig(
     properties.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, "false");
     properties.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, autoOffsetReset);
     properties.put(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, Integer.toString(maxPollRecords));
+    if (!clientId.isEmpty()) {
+      properties.put("client.id", clientId + "-source-" + sourceIndex);
+    }
     return properties;
   }
 

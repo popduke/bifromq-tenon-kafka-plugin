@@ -17,6 +17,7 @@ final class KafkaPlugin implements TenonSourceAndSink<SinkRecordPayload> {
   private final int parallelism;
   private final PayloadSender<SourceRecordPayload> sender;
   private final KafkaClientFactory clients;
+  private int nextSourceIndex;
   private Producer<byte[], byte[]> producer;
 
   KafkaPlugin(
@@ -37,7 +38,7 @@ final class KafkaPlugin implements TenonSourceAndSink<SinkRecordPayload> {
 
   @Override
   public TenonSource createSource() {
-    return new KafkaSource(config, parallelism, sender, clients);
+    return new KafkaSource(config, parallelism, nextSourceIndex++, sender, clients);
   }
 
   @Override

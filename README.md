@@ -14,9 +14,9 @@ The plugin uses the official Apache Kafka Java client:
 
 ## For users
 
-Configure one plugin instance with Kafka connection details, a consumer group, and one or more source topics. Sink records may provide their own topic or use `defaultTopic`.
+Configure one plugin instance with Kafka connection details, an explicit consumer group, and one or more source topics. `sourceConsumerCount` controls how many Kafka consumers join that group and defaults to one. Sink records may provide their own topic or use `defaultTopic`.
 
-The Source disables automatic Kafka offset commits. It commits the next offset only after all earlier records in the same partition have completed successfully in Tenon. The Sink completes a batch only after Kafka acknowledges every record. The resulting delivery guarantee is at-least-once; a process or connection failure can cause records to be delivered again.
+The Source disables automatic Kafka offset commits. It commits the next offset only after all earlier records in the same partition have completed successfully in Tenon. Normal commits are asynchronous; rebalance and shutdown use synchronous commits to close the final acknowledged boundary. The Sink completes a batch only after Kafka acknowledges every record. The resulting delivery guarantee is at-least-once; a process or connection failure can cause records to be delivered again.
 
 The configuration schema is [src/main/tenon/config.schema.json](src/main/tenon/config.schema.json). Payload definitions are [source_record_payload.proto](src/main/proto/source_record_payload.proto) and [sink_record_payload.proto](src/main/proto/sink_record_payload.proto).
 
@@ -24,9 +24,9 @@ The configuration schema is [src/main/tenon/config.schema.json](src/main/tenon/c
 
 `parallelism` is the number of ordered Tenon Flow channels configured for a Flow. It is not the number of Kafka consumers, producer connections, or worker threads.
 
-The plugin runs one Kafka consumer worker for each Source. For every Kafka topic-partition, it computes a stable hash of the topic name and partition number and maps that partition to a channel in the range `0 .. parallelism - 1`. Records from the same Kafka partition always use the same channel, preserving partition order. Different Kafka partitions may use different channels and can progress independently. Each partition has one record in flight at a time, so acknowledgement latency limits Source throughput.
+The plugin creates `sourceConsumerCount` Kafka consumer workers. They use the same explicit `groupId` and subscribe to the same topics, so Kafka assigns each topic-partition to at most one worker at a time. For every Kafka topic-partition, the plugin computes a stable hash of the topic name and partition number and maps that partition to a channel in the range `0 .. parallelism - 1`. Records from the same Kafka partition always use the same channel, even after consumer-group rebalance. Different Kafka partitions may use different channels and can progress independently. Multiple records from one partition may be in flight while Tenon admission permits are available; offset commits still advance only across the continuous successful prefix. Rebalance may replay records that were not committed.
 
-Increasing Flow `parallelism` gives the pipeline more independent channels, but it does not create more Kafka consumers. Kafka consumer-group scaling is controlled by the number of Tenon Source instances, each with its own plugin instance and consumer group membership.
+Increasing Flow `parallelism` gives the pipeline more independent channels, but it does not create more Kafka consumers. Kafka consumer-group scaling within one Plugin instance is controlled by `sourceConsumerCount`; all of those consumers share the configured `groupId`.
 
 ## For maintainers
 

@@ -89,7 +89,7 @@ final class KafkaPluginTest {
   void completionsCommitOnlyTheContinuousSuccessfulPrefix() {
     var first = new CompletableFuture<AckCode>();
     var second = new CompletableFuture<AckCode>();
-    var completions = new SourceCompletions();
+    var completions = new SourceCompletions(() -> {});
     var firstPayload = sourcePayload("first", 10);
     var secondPayload = sourcePayload("second", 11);
     completions.add(firstPayload);
@@ -101,13 +101,13 @@ final class KafkaPluginTest {
             return payload.getOffset() == 10 ? first : second;
           }
         };
-    completions.dispatch(1, sender);
+    completions.dispatch(1, sender, () -> true);
     second.complete(AckCode.OK);
     completions.collectCompleted();
     assertTrue(completions.committableOffsets().isEmpty());
     first.complete(AckCode.OK);
     completions.collectCompleted();
-    completions.dispatch(1, sender);
+    completions.dispatch(1, sender, () -> true);
     second.complete(AckCode.OK);
     completions.collectCompleted();
     assertEquals(12, completions.committableOffsets().get(new TopicPartition("input", 0)).offset());
@@ -116,9 +116,31 @@ final class KafkaPluginTest {
   }
 
   @Test
+  void staleAsyncCommitAcknowledgementDoesNotClearNewerOffset() {
+    var first = new CompletableFuture<AckCode>();
+    var second = new CompletableFuture<AckCode>();
+    var completions = new SourceCompletions(() -> {});
+    completions.add(sourcePayload("first", 10));
+    completions.add(sourcePayload("second", 11));
+    completions.dispatch(
+        1, (channel, payload) -> payload.getOffset() == 10 ? first : second, () -> true);
+
+    first.complete(AckCode.OK);
+    completions.collectCompleted();
+    var oldCommit = completions.committableOffsets();
+    second.complete(AckCode.OK);
+    completions.collectCompleted();
+    completions.markCommitted(oldCommit);
+
+    assertEquals(12, completions.committableOffsets().get(new TopicPartition("input", 0)).offset());
+    completions.markCommitted(completions.committableOffsets());
+    assertTrue(completions.committableOffsets().isEmpty());
+  }
+
+  @Test
   void completionsRetryTheSameRecordAfterBackpressure() {
     var attempts = new AtomicInteger();
-    var completions = new SourceCompletions();
+    var completions = new SourceCompletions(() -> {});
     var payload = sourcePayload("value", 4);
     completions.add(payload);
     PayloadSender<SourceRecordPayload> sender =
@@ -127,9 +149,9 @@ final class KafkaPluginTest {
           return CompletableFuture.completedFuture(
               attempts.incrementAndGet() == 1 ? AckCode.BACKPRESSURE : AckCode.OK);
         };
-    completions.dispatch(2, sender);
+    completions.dispatch(2, sender, () -> true);
     completions.collectCompleted();
-    completions.dispatch(2, sender);
+    completions.dispatch(2, sender, () -> true);
     completions.collectCompleted();
     assertEquals(2, attempts.get());
     assertEquals(5, completions.committableOffsets().get(new TopicPartition("input", 0)).offset());
@@ -137,9 +159,10 @@ final class KafkaPluginTest {
 
   @Test
   void completionsRejectPermanentTenonError() {
-    var completions = new SourceCompletions();
+    var completions = new SourceCompletions(() -> {});
     completions.add(sourcePayload("value", 0));
-    completions.dispatch(1, (channel, payload) -> CompletableFuture.completedFuture(AckCode.ERROR));
+    completions.dispatch(
+        1, (channel, payload) -> CompletableFuture.completedFuture(AckCode.ERROR), () -> true);
 
     var error = assertThrows(IllegalStateException.class, completions::collectCompleted);
     assertEquals("Kafka Source record rejected by Tenon", error.getMessage());
@@ -170,7 +193,7 @@ final class KafkaPluginTest {
 
   @Test
   void retriesDoNotLetLaterOffsetsOvertakeAndAreBounded() {
-    var completions = new SourceCompletions();
+    var completions = new SourceCompletions(() -> {});
     completions.add(sourcePayload("first", 10));
     completions.add(sourcePayload("second", 11));
     var observed = new ArrayList<Long>();
@@ -180,26 +203,29 @@ final class KafkaPluginTest {
           return CompletableFuture.completedFuture(AckCode.RETRY);
         };
     for (int attempt = 0; attempt < 3; attempt++) {
-      completions.dispatch(1, retrying);
+      completions.dispatch(1, retrying, () -> true);
       completions.collectCompleted();
       assertTrue(completions.committableOffsets().isEmpty());
     }
-    completions.dispatch(1, retrying);
+    completions.dispatch(1, retrying, () -> true);
     assertThrows(IllegalStateException.class, completions::collectCompleted);
-    assertEquals(List.of(10L, 10L, 10L, 10L), observed);
+    assertEquals(List.of(10L, 11L, 10L, 11L, 10L, 11L, 10L, 11L), observed);
   }
 
   @Test
   void backpressureWaitDoesNotExhaustRecordRetries() {
-    var completions = new SourceCompletions();
+    var completions = new SourceCompletions(() -> {});
     completions.add(sourcePayload("first", 10));
     for (int attempt = 0; attempt < 100; attempt++) {
       completions.dispatch(
-          1, (channel, payload) -> CompletableFuture.completedFuture(AckCode.BACKPRESSURE));
+          1,
+          (channel, payload) -> CompletableFuture.completedFuture(AckCode.BACKPRESSURE),
+          () -> true);
       completions.collectCompleted();
     }
     assertTrue(completions.committableOffsets().isEmpty());
-    completions.dispatch(1, (channel, payload) -> CompletableFuture.completedFuture(AckCode.OK));
+    completions.dispatch(
+        1, (channel, payload) -> CompletableFuture.completedFuture(AckCode.OK), () -> true);
     completions.collectCompleted();
     assertEquals(11, completions.committableOffsets().get(new TopicPartition("input", 0)).offset());
   }
@@ -235,10 +261,24 @@ final class KafkaPluginTest {
   void consumerPropertiesDisableAutomaticCommit() throws Exception {
     var config = config();
 
-    assertEquals("false", config.consumerProperties().getProperty("enable.auto.commit"));
-    assertEquals("earliest", config.consumerProperties().getProperty("auto.offset.reset"));
+    assertEquals("false", config.consumerProperties(0).getProperty("enable.auto.commit"));
+    assertEquals("earliest", config.consumerProperties(0).getProperty("auto.offset.reset"));
     assertEquals("all", config.producerProperties().getProperty("acks"));
     assertEquals("true", config.producerProperties().getProperty("enable.idempotence"));
+    assertEquals(1, config.sourceConsumerCount());
+  }
+
+  @Test
+  void sourceConsumerCountAndClientIdsAreConfigurable() throws Exception {
+    var config =
+        KafkaConfig.parse(
+            new ObjectMapper()
+                .readTree(
+                    """
+                    {"bootstrapServers":"localhost:9092","groupId":"group","sourceTopics":["input"],"sourceConsumerCount":3,"clientId":"kafka"}
+                    """));
+    assertEquals(3, config.sourceConsumerCount());
+    assertEquals("kafka-source-2", config.consumerProperties(2).getProperty("client.id"));
   }
 
   private static KafkaPlugin plugin(MockProducer<byte[], byte[]> producer) throws Exception {
